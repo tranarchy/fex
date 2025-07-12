@@ -268,7 +268,7 @@ int get_entries(struct state *state, bool subdir) {
         if (entry_count == state->current_index && !search_string_len && !subdir) {
             state->current_entry = entry;
 
-            printf("\033[s");
+            printf("\0337");
 
             if (is_dir(entry->d_name)) {
                 chdir(entry->d_name);
@@ -276,7 +276,7 @@ int get_entries(struct state *state, bool subdir) {
                 chdir("..");
             }
 
-            printf("\033[u");
+            printf("\0338");
             printf(BOLD "-> ");
         }
 
@@ -545,7 +545,7 @@ void open_dir(struct state *state) {
 }
 
 void xdg_open(struct state *state) {
-    char *exec_args[2];
+    char *exec_args[3];
     pid_t pid;
 
     #ifdef __APPLE__
@@ -561,11 +561,13 @@ void xdg_open(struct state *state) {
     }
 
     exec_args[1] = state->current_entry->d_name;
+    exec_args[2] = NULL;
 
     pid = fork();
 
     if (pid == 0) {
         execv(exec_args[0], exec_args);
+        exit(0);
     }
 }
 
@@ -732,6 +734,10 @@ int main(int argc, char **argv) {
     state.selected_count = 0;
     state.show_hidden = false;
     state.more_info = false;
+
+    for (int i = 0; i < 9; i++) {
+        state.workspaces[i][0] = '\0';
+    }
 
     tcgetattr(0, &old);
     new = old;
