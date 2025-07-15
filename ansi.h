@@ -8,11 +8,9 @@
 #define BOLD "\033[1m"
 #define BLINK "\033[5m"
 
-#define BLACK_FG "\033[30m"
-#define GREEN_FG "\033[32m"
-#define YELLOW_FG "\033[33m"
-#define BLUE_FG "\033[34m"
-#define CYAN_FG "\033[36m"
-
-#define GREEN_BG "\033[42m"
-#define WHITE_BG "\033[47m"
+#define BLACK_FG 30
+#define GREEN_FG 32
+#define YELLOW_FG 33
+#define BLUE_FG 34
+#define CYAN_FG 36
+#define WHITE_FG 37

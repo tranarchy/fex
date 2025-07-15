@@ -123,6 +123,23 @@ bool get_input(char *input) {
     return true;
 }
 
+bool into_dir(char *operation, struct state *state) {
+    char choice;
+
+    if (state->current_entry->d_type == DT_DIR) {
+        printf("%s into %s? (y/n)", operation, state->current_entry->d_name);
+
+        choice = getchar();
+
+        if (choice == 'y' || choice == 'Y') {
+            chdir(state->current_entry->d_name);
+            return true;
+        }
+    }
+
+    return false;
+} 
+
 void select_entry(struct state *state) {
     bool deselect = false;
 
@@ -171,6 +188,8 @@ int get_entries(struct state *state, bool subdir) {
     char size_buff[32];
 
     char perms_buff[11];
+
+    int fg_color;
 
     ioctl(0, TIOCGWINSZ, &w);
 
@@ -279,32 +298,37 @@ int get_entries(struct state *state, bool subdir) {
             printf("\0338");
             printf(BOLD "-> ");
         }
-
-        for (int i = 0; i < state->selected_count; i++) {
-            if (strcmp(state->selected_entries[i].name, entry->d_name) == 0 &&
-                strcmp(state->selected_entries[i].path, cwd) == 0) {
-                printf(WHITE_BG);
-                break;
-            }
-        }
-
+        
         switch(entry->d_type) {
             case DT_DIR:
-                printf(BLUE_FG);
+                fg_color = BLUE_FG;
                 break;
             case DT_LNK:
-                printf(CYAN_FG);
+                fg_color = CYAN_FG;
                 break;
             case DT_BLK:
             case DT_CHR:
             case DT_FIFO:
             case DT_SOCK:
-                printf(YELLOW_FG);
-                break;    
+                fg_color = YELLOW_FG;
+                break;
+           default:
+                fg_color = WHITE_FG;
         }
 
         if (is_executable(entry_stat.st_mode)) {
-            printf(GREEN_FG);
+            fg_color = GREEN_FG;
+        }
+
+        printf("\033[%dm", fg_color);
+
+        for (int i = 0; i < state->selected_count; i++) {
+            if (strcmp(state->selected_entries[i].name, entry->d_name) == 0 &&
+                strcmp(state->selected_entries[i].path, cwd) == 0) {
+                printf("\033[%dm", fg_color + 10);
+                printf("\033[%dm", BLACK_FG);
+                break;
+            }
         }
 
         printf("%s", entry->d_name);
@@ -382,7 +406,6 @@ void copy_file(char *source_path, char *dest_path) {
         fputc(c, dest);
     }
 
-    stat(source_path, &source_stat);
     fchmod(fileno(dest), source_stat.st_mode);
 
     fclose(source);
@@ -427,25 +450,36 @@ void copy_entry(struct state *state) {
    
     char link_origin[1024];
     char source_path[1280];
-    
+
+    bool is_into_dir = into_dir("Copy", state);
+
     for (int i = 0; i < state->selected_count; i++) {
+        struct selected_entry selected_entry = state->selected_entries[i];
+    
         snprintf(source_path, 1280, "%s/%s", 
-            state->selected_entries[i].path,
-            state->selected_entries[i].name
+            selected_entry.path,
+            selected_entry.name
         );
 
+        if (strcmp(selected_entry.path, state->workspaces[state->workspace_index]) == 0 && !is_into_dir) {
+            continue;
+        }
+
         if (state->selected_entries[i].type == DT_REG) {
-            copy_file(source_path, state->selected_entries[i].name);
+            copy_file(source_path, selected_entry.name);
         } else if (state->selected_entries[i].type == DT_DIR) {
             stat(source_path, &source_stat);
-            mkdir(state->selected_entries[i].name, source_stat.st_mode);
-            copy_dir(state->selected_entries[i].name, source_path, source_path);
-        } else if (state->selected_entries[i].type == DT_LNK) {
+            mkdir(selected_entry.name, source_stat.st_mode);
+            copy_dir(selected_entry.name, source_path, source_path);
+        } else if (selected_entry.type == DT_LNK) {
             size_t read = readlink(source_path, link_origin, 1024);
             link_origin[read] = '\0';
             symlink(link_origin, state->selected_entries[i].name);
         }
     }
+
+    if (is_into_dir)
+        chdir("..");
 }
 
 void move_entry(struct state *state) {
@@ -456,9 +490,11 @@ void move_entry(struct state *state) {
     if (state->selected_count == 0)
         return;
 
+    bool is_into_dir = into_dir("Move", state);     
+
     bool custom_name = false;
 
-    printf("New name: ");
+    printf("\nNew name: ");
     get_input(name);
 
     if (strcmp(name, "\n") != 0) {
@@ -467,9 +503,11 @@ void move_entry(struct state *state) {
     }
 
     for (int i = 0; i < state->selected_count; i++) {
+        struct selected_entry selected_entry = state->selected_entries[i];
+    
         snprintf(source_path, 1280, "%s/%s", 
-            state->selected_entries[i].path,
-            state->selected_entries[i].name
+            selected_entry.path,
+            selected_entry.name
         );
 
         if (custom_name) {
@@ -478,26 +516,36 @@ void move_entry(struct state *state) {
                 strlcpy(name, indexed_name, 1280);
             }
         } else {
-            strlcpy(name, state->selected_entries[i].name, 1280);
+            strlcpy(name, selected_entry.name, 1280);
         }
 
         rename(source_path, name);
     }
 
     state->selected_count = 0;
+
+    if (is_into_dir)
+        chdir("..");
 }
 
 void symlink_entry(struct state *state) {
     char source_path[1280];
+
+    bool is_into_dir = into_dir("Symlink", state); 
     
     for (int i = 0; i < state->selected_count; i++) {
+        struct selected_entry selected_entry = state->selected_entries[i];
+    
         snprintf(source_path, 1280, "%s/%s", 
-            state->selected_entries[i].path,
-            state->selected_entries[i].name
+            selected_entry.path,
+            selected_entry.name
         );
 
-        symlink(source_path, state->selected_entries[i].name);
+        symlink(source_path, selected_entry.name);
     }
+
+    if (is_into_dir)
+        chdir("..");
 }
 
 void chmod_entry(struct state *state) {
@@ -757,14 +805,14 @@ int main(int argc, char **argv) {
 
         for (int i = 0 ; i < 9; i++) {
             if (state.workspace_index == i) {
-               printf(CYAN_FG);
+               printf("\033[%dm", CYAN_FG);
             }
             printf("[%d] " RESET, i + 1);
         }
         
         printf("\n\n");
         printf("%s%s%s ", BOLD, state.workspaces[state.workspace_index], RESET);
-        printf("[%s%s%dS%s]", BLINK, CYAN_FG, state.selected_count, RESET);
+        printf("[%s\033[%dm%dS%s]", BLINK, CYAN_FG, state.selected_count, RESET);
         printf("\n\n");
 
         entry_count = get_entries(&state, false);
